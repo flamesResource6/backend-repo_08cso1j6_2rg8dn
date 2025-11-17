@@ -1,48 +1,71 @@
 """
-Database Schemas
+Database Schemas for Consultancy LMS
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
+Each Pydantic model represents a MongoDB collection. The collection name
+is the lowercase of the class name (e.g., User -> "user").
 
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+These schemas are used for validation and for the auto database viewer.
 """
+from typing import Optional, List
+from pydantic import BaseModel, Field, EmailStr
+from datetime import datetime
 
-from pydantic import BaseModel, Field
-from typing import Optional
-
-# Example schemas (replace with your own):
 
 class User(BaseModel):
     """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
+    Users of the platform: consultants and clients
+    Collection: "user"
     """
     name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+    email: EmailStr = Field(..., description="Unique email address")
+    role: str = Field("client", description="Role of the user: consultant | client | admin")
+    avatar_url: Optional[str] = Field(None, description="Profile image URL")
+    bio: Optional[str] = Field(None, description="Short bio or headline")
+    is_active: bool = Field(True, description="Whether the user is active")
 
-class Product(BaseModel):
+
+class Course(BaseModel):
     """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
+    Courses offered by consultants. Each course can have many lessons.
+    Collection: "course"
     """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
+    title: str = Field(..., description="Course title")
+    description: Optional[str] = Field(None, description="What this course covers")
+    consultant_id: str = Field(..., description="Owner consultant user id (string ObjectId)")
+    tags: List[str] = Field(default_factory=list, description="Keywords for discovery")
+    is_published: bool = Field(False, description="Visibility flag")
 
-# Add your own schemas here:
-# --------------------------------------------------
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+class Lesson(BaseModel):
+    """
+    Lessons are pieces of content inside a course
+    Collection: "lesson"
+    """
+    course_id: str = Field(..., description="Parent course id (string ObjectId)")
+    title: str = Field(..., description="Lesson title")
+    content: Optional[str] = Field(None, description="Markdown/HTML or plain text content")
+    order: int = Field(1, ge=1, description="Ordering within the course")
+
+
+class Enrollment(BaseModel):
+    """
+    Link between a user and a course
+    Collection: "enrollment"
+    """
+    user_id: str = Field(..., description="User id (string ObjectId)")
+    course_id: str = Field(..., description="Course id (string ObjectId)")
+    status: str = Field("active", description="active | completed | cancelled")
+
+
+class Session(BaseModel):
+    """
+    1:1 or group session booking
+    Collection: "session"
+    """
+    title: str = Field(..., description="Session title or topic")
+    user_id: str = Field(..., description="Client user id (string ObjectId)")
+    consultant_id: str = Field(..., description="Consultant user id (string ObjectId)")
+    course_id: Optional[str] = Field(None, description="Related course id if applicable")
+    start_time: datetime = Field(..., description="Start datetime in ISO format")
+    duration_minutes: int = Field(60, ge=15, le=480, description="Duration in minutes")
+    notes: Optional[str] = Field(None, description="Additional context or agenda")

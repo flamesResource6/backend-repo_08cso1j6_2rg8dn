@@ -1,8 +1,14 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+from bson import ObjectId
 
-app = FastAPI()
+from database import db, create_document, get_documents
+from schemas import User, Course, Lesson, Enrollment, Session
+
+app = FastAPI(title="Consultancy LMS API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,57 +18,135 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Helpers
+class IdModel(BaseModel):
+    id: str
+
+
+def ensure_db():
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+
 @app.get("/")
 def read_root():
-    return {"message": "Hello from FastAPI Backend!"}
+    return {"message": "Consultancy LMS Backend running"}
 
-@app.get("/api/hello")
-def hello():
-    return {"message": "Hello from the backend API!"}
 
 @app.get("/test")
 def test_database():
-    """Test endpoint to check if database is available and accessible"""
+    """Simple test to check DB connectivity and list a few collections"""
     response = {
         "backend": "✅ Running",
         "database": "❌ Not Available",
         "database_url": None,
         "database_name": None,
         "connection_status": "Not Connected",
-        "collections": []
+        "collections": [],
     }
-    
     try:
-        # Try to import database module
-        from database import db
-        
-        if db is not None:
-            response["database"] = "✅ Available"
-            response["database_url"] = "✅ Configured"
-            response["database_name"] = db.name if hasattr(db, 'name') else "✅ Connected"
-            response["connection_status"] = "Connected"
-            
-            # Try to list collections to verify connectivity
-            try:
-                collections = db.list_collection_names()
-                response["collections"] = collections[:10]  # Show first 10 collections
-                response["database"] = "✅ Connected & Working"
-            except Exception as e:
-                response["database"] = f"⚠️  Connected but Error: {str(e)[:50]}"
-        else:
-            response["database"] = "⚠️  Available but not initialized"
-            
-    except ImportError:
-        response["database"] = "❌ Database module not found (run enable-database first)"
+        ensure_db()
+        response["database"] = "✅ Available"
+        response["database_url"] = "✅ Set" if os.getenv("DATABASE_URL") else "❌ Not Set"
+        response["database_name"] = db.name if hasattr(db, "name") else "❌ Unknown"
+        response["connection_status"] = "Connected"
+        response["collections"] = db.list_collection_names()[:10]
     except Exception as e:
-        response["database"] = f"❌ Error: {str(e)[:50]}"
-    
-    # Check environment variables
-    import os
-    response["database_url"] = "✅ Set" if os.getenv("DATABASE_URL") else "❌ Not Set"
-    response["database_name"] = "✅ Set" if os.getenv("DATABASE_NAME") else "❌ Not Set"
-    
+        response["database"] = f"❌ Error: {str(e)[:120]}"
     return response
+
+
+# Minimal CRUD endpoints
+@app.post("/users", response_model=dict)
+def create_user(payload: User):
+    ensure_db()
+    _id = create_document("user", payload)
+    return {"id": _id}
+
+
+@app.get("/users", response_model=List[dict])
+def list_users():
+    ensure_db()
+    docs = get_documents("user", {}, limit=50)
+    for d in docs:
+        d["id"] = str(d.pop("_id"))
+    return docs
+
+
+@app.post("/courses", response_model=dict)
+def create_course(payload: Course):
+    ensure_db()
+    _id = create_document("course", payload)
+    return {"id": _id}
+
+
+@app.get("/courses", response_model=List[dict])
+def list_courses():
+    ensure_db()
+    docs = get_documents("course")
+    for d in docs:
+        d["id"] = str(d.pop("_id"))
+    return docs
+
+
+@app.post("/lessons", response_model=dict)
+def create_lesson(payload: Lesson):
+    ensure_db()
+    _id = create_document("lesson", payload)
+    return {"id": _id}
+
+
+@app.get("/lessons", response_model=List[dict])
+def list_lessons(course_id: Optional[str] = None):
+    ensure_db()
+    filter_dict = {"course_id": course_id} if course_id else {}
+    docs = get_documents("lesson", filter_dict)
+    for d in docs:
+        d["id"] = str(d.pop("_id"))
+    return docs
+
+
+@app.post("/enrollments", response_model=dict)
+def enroll(payload: Enrollment):
+    ensure_db()
+    _id = create_document("enrollment", payload)
+    return {"id": _id}
+
+
+@app.get("/enrollments", response_model=List[dict])
+def list_enrollments(user_id: Optional[str] = None, course_id: Optional[str] = None):
+    ensure_db()
+    filter_dict = {}
+    if user_id:
+        filter_dict["user_id"] = user_id
+    if course_id:
+        filter_dict["course_id"] = course_id
+    docs = get_documents("enrollment", filter_dict)
+    for d in docs:
+        d["id"] = str(d.pop("_id"))
+    return docs
+
+
+@app.post("/sessions", response_model=dict)
+def create_session(payload: Session):
+    ensure_db()
+    _id = create_document("session", payload)
+    return {"id": _id}
+
+
+@app.get("/sessions", response_model=List[dict])
+def list_sessions(consultant_id: Optional[str] = None, user_id: Optional[str] = None):
+    ensure_db()
+    filter_dict = {}
+    if consultant_id:
+        filter_dict["consultant_id"] = consultant_id
+    if user_id:
+        filter_dict["user_id"] = user_id
+    docs = get_documents("session", filter_dict)
+    for d in docs:
+        d["id"] = str(d.pop("_id"))
+    return docs
 
 
 if __name__ == "__main__":
